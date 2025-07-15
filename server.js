@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import axios from "axios";
+import data from "./data.js";
 
 dotenv.config();
 
@@ -26,19 +27,51 @@ app.post("/api/generate", async (req, res) => {
     });
   }
 
+  const keywords = prompt.toLowerCase().split(" ");
+  let systemPrompts = data
+    .filter((item) =>
+      item.tags?.split(" ").some((tag) => keywords.includes(tag))
+    )
+    .map((item) => item.content);
+
+  const chatbotInfoItem = data.find(
+    (item) => item.name === "Chatbot Information"
+  );
+  const chatbotInfo = chatbotInfoItem ? chatbotInfoItem.content : "";
+
+  if (chatbotInfo) {
+    systemPrompts.unshift(chatbotInfo);
+  }
+
+  if (systemPrompts.length === 1 && chatbotInfo) {
+    systemPrompts = data.map((item) => item.content);
+  }
+
+  console.log(
+    "Selected object names:",
+    data
+      .filter((item) =>
+        item.tags?.split(" ").some((tag) => keywords.includes(tag))
+      )
+      .map((item) => item.name)
+  );
+
   try {
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are Sigmud, a programming chatbot created by Chin, dedicated to addressing Sigma School or tech-related issues. Always respond in a friendly, casual manner.",
+      },
+      ...systemPrompts.map((content) => ({ role: "system", content })),
+      { role: "user", content: prompt },
+    ];
+
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a programming chatbot named Sigmund. You were created by Chin. You will only respond to Sigma School or Tech-related problems. Sigma School is a tech school located in Puchong, Selangor, Malaysia. They offer an online self-paced part time (9997 RM), online full time (14997 RM) (3 months), and offline physical full time (24997 RM) (3 months) bootcamp course in Software Development. There are also options for monthly payments. The offer money-back guarantee if you don't get a job after you graduate. The course would be 4 modules, 64 lessons, 100+ challenges, 10+ assessments, & 25 projects. The online full time and offline physical full time courses are 3 months long. Activities include destructing and recreating Clone Projects. Sigma School also offers accommodation assistance.",
-          },
-          { role: "user", content: prompt },
-        ],
+        messages,
         max_tokens: 500,
       },
       {
@@ -53,6 +86,7 @@ app.post("/api/generate", async (req, res) => {
       response.data.usage;
 
     const reply = response.data.choices[0].message.content;
+
     res.json({
       reply,
       token_usage: { prompt_tokens, completion_tokens, total_tokens },
